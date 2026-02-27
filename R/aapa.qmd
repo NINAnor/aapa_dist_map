@@ -1,0 +1,91 @@
+---
+title: "Aapa distribution map of Norway"
+format: html
+---
+
+
+```{r setup}
+library(tidyverse)
+library(dbConnect)
+library(dbplyr)
+library(DBI)
+library(RPostgres)
+library(stars)
+```
+
+
+```{r connectionObject}
+# the password is stored in a pgpass.conf file
+con <- DBI::dbConnect(drv = RPostgres::Postgres(), host = "t2lippgsql03", dbname = "ano_moduler")
+```
+
+
+```{r getData}
+bc <- dplyr::tbl(con, dbplyr::in_schema("helper_variables", "bioclimatic_regions"))
+
+bc <- bc |>
+  mutate(geom_wkb = dbplyr::sql("ST_AsBinary(geom)")) |>
+  select(-geom) |>
+  collect() |>
+  mutate(geom = sf::st_as_sfc(geom_wkb, crs = 25833)) |>
+  sf::st_as_sf(sf_column_name = "geom")
+
+```
+
+
+```{r define}
+reg <- unique(bc$BCregion)
+# we exclude boreonemoral and south boreal sones (6SO1-2 and 6SE1)
+exl <- grep("6SO-1-2|6SE-1", reg)
+
+bc2 <- bc |>
+  mutate(aapa = case_when(
+    BCregion %in% reg[exl] ~ 0,
+    .default = 1
+  ))
+
+bc2 |> as_tibble() |> count(aapa)
+
+```
+
+```{r cheachResolution}
+temp <- bc2 |>
+    mutate(km2 = units::drop_units(st_area(geom))*10^-6)
+
+summary(temp |> as_tibble() |> pull(km2))
+# area is 1 km1
+```
+
+```{r rasterize}
+bc_raster <- st_rasterize(bc2) 
+plot(bc_raster)
+st_crs(bc_raster) # UTM  - OK
+```
+
+
+```{r aggregate}
+bc_raster10 <- st_warp(
+  bc_raster,
+  cellsize = 10000,
+  method = "max",
+  use_gdal = TRUE
+)
+plot(bc_raster10)
+```
+
+
+```{r test}
+# the area of each pixle should be should 100 km2
+temp <- bc_raster10 |>
+    st_as_sf() |>
+    mutate(km2 = units::drop_units(st_area(geometry))*10^-6)
+
+summary(temp |> as_tibble() |> pull(km2))
+# OK
+```
+
+
+```{r export}
+saveRDS(bc_raster10, "output/aapa_dist_map.rds")
+write_stars(bc_raster10, "output/aapa_dist_map.tif")
+```
