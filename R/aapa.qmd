@@ -6,11 +6,12 @@ format: html
 
 ```{r setup}
 library(tidyverse)
-library(dbConnect)
+#library(dbConnect)
 library(dbplyr)
 library(DBI)
 library(RPostgres)
 library(stars)
+library(sf)
 ```
 
 
@@ -38,17 +39,24 @@ reg <- unique(bc$BCregion)
 # we exclude boreonemoral and south boreal sones (6SO1-2 and 6SE1)
 exl <- grep("6SO-1-2|6SE-1", reg)
 
+# 1 = presence; 0 = absence
 bc2 <- bc |>
   mutate(aapa = case_when(
     BCregion %in% reg[exl] ~ 0,
     .default = 1
   ))
 
+# test:
 bc2 |> as_tibble() |> count(aapa)
+
+bc2 |>
+  slice_sample(prop = 0.2) |>
+  tmap::tm_shape() +
+  tmap::tm_fill(col = "aapa", style = "cat")
 
 ```
 
-```{r cheachResolution}
+```{r checkResolution}
 temp <- bc2 |>
     mutate(km2 = units::drop_units(st_area(geom))*10^-6)
 
@@ -56,9 +64,49 @@ summary(temp |> as_tibble() |> pull(km2))
 # area is 1 km1
 ```
 
+```{r importGrid}
+grid <- readRDS("data/grid50_kyst_bgr.rds")
+dplyr_summary <- function(data, var) {
+  if (inherits(data, "sf")) {
+    data <- sf::st_drop_geometry(data)
+  }
+  data %>%
+    summarise(
+      Min    = min({{ var }}, na.rm = TRUE),
+      Q1     = quantile({{ var }}, 0.25, na.rm = TRUE),
+      Median = median({{ var }}, na.rm = TRUE),
+      Mean   = mean({{ var }}, na.rm = TRUE),
+      Q3     = quantile({{ var }}, 0.75, na.rm = TRUE),
+      Max    = max({{ var }}, na.rm = TRUE)
+    )
+}
+
+grid |>
+  mutate(km2 = units::drop_units(st_area(geometry))*10^-6) |>
+  dplyr_summary(km2)
+
+# the area varies
+```
+
+```{r rasterizeGrid}
+
+grid_raster <- st_rasterize(grid)
+
+# the area of each pixle should be should 100 km2
+temp <- grid_raster |>
+    st_as_sf() |>
+    mutate(km2 = units::drop_units(st_area(geometry))*10^-6)
+
+summary(temp |> as_tibble() |> pull(km2))
+# it is not
+```
+
 ```{r rasterize}
 bc_raster <- st_rasterize(bc2) 
+#bc_raster_grid <- st_rasterize(bc2, grid_raster, align = TRUE) 
 plot(bc_raster)
+#plot(bc_raster_grid)
+
 st_crs(bc_raster) # UTM  - OK
 ```
 
@@ -88,4 +136,11 @@ summary(temp |> as_tibble() |> pull(km2))
 ```{r export}
 saveRDS(bc_raster10, "output/aapa_dist_map.rds")
 write_stars(bc_raster10, "output/aapa_dist_map.tif")
+
+# export fines scale raster
+saveRDS(bc_raster, "output/aapa_dist_map_1km2.rds")
+write_stars(bc_raster, "output/aapa_dist_map_1km2.tif")
+
+
+saveRDS(bc2, "output/aapa_dist_map_1km2_vector.rds")
 ```
