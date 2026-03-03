@@ -40,7 +40,7 @@ bc <- bc |>
   mutate(geom_wkb = dbplyr::sql("ST_AsBinary(geom)")) |>
   select(-geom) |>
   collect() |>
-  mutate(geom = sf::st_as_sfc(geom_wkb, crs = 3035)) |>
+  mutate(geom = sf::st_as_sfc(geom_wkb, crs = 25833)) |>
   sf::st_as_sf(sf_column_name = "geom")
 
 ```
@@ -119,11 +119,12 @@ Creating a regular raster aligned with `grid`.
 rr <- 10000
 # Get bbox
 bb <- st_bbox(grid) 
+st_crs(grid)
 
 # create regular grid frm bbox
 gr0 <- rast(xmin= floor(bb["xmin"]/rr)*rr, xmax= ceiling(bb["xmax"]/rr)*rr, 
               ymin= floor(bb["ymin"]/rr)*rr, ymax= ceiling(bb["ymax"]/rr)*rr, 
-              res= rr, crs= "EPSG:3035")
+              res= rr, crs= "EPSG:25833")
 ret <- rasterize(grid, gr0, cover=T, touches=T) # (for very small polygons touches=TRUE is needed, otherwise FALSE)
 
 class(ret)
@@ -136,8 +137,18 @@ res(bc_raster_grid)
 # OK
 ```
 
+Import outline of Norway and overlay in the same map to check that the CRS is OK
 ```{r}
-plot(bc_raster_grid)
+nor <- readRDS(here::here("data", "norway.rds"))
+class(nor)
+st_crs(nor)
+```
+```{r}
+tm_shape(bc_raster_grid)+
+  tm_raster("aapa") +
+  tm_shape(nor) +
+  tm_borders()
+# OK
 ```
 
 ```{r}
@@ -150,8 +161,15 @@ ncell(bc_raster_grid)
 
 There are quite a few NA's, but these are from the areas outside mainland Norway (the ocean, Sweden etc.). So that's OK.
 
+I will export in two CRS's.
+
+```{r transform}
+bc_raster_3035 <- project(bc_raster_grid, "EPSG:3035", method = "near")
+```
+
 Exporting the map
 ```{r export}
 #| eval: false
-writeRaster(bc_raster_grid, "output/aapa_dist_map.tif", overwrite=TRUE)
+writeRaster(bc_raster_grid, "output/aapa_dist_map_25833.tif", overwrite=TRUE)
+writeRaster(bc_raster_3035, "output/aapa_dist_map_3035.tif", overwrite=TRUE)
 ```
