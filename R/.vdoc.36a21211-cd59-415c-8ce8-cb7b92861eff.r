@@ -1,18 +1,10 @@
----
-title: "Aapa distribution map of Norway"
-format: pdf
-author: Anders Kolstad
-date: last-modified
----
-
-This script creates a distribution map of appa mires in Norway, for use in reporting for the Bern convention.
-The resolution is 10x10 km.
-The distribution is defined based on certain bioclimatic sones and sections.
-
-
-```{r setup}
-#| warning: false
-#| message: faalse
+#
+#
+#
+#
+#
+#
+#
 library(tidyverse)
 #library(dbConnect)
 library(dbplyr)
@@ -22,18 +14,18 @@ library(stars)
 library(sf)
 library(terra)
 library(tmap)
-```
-
-
-Connecting to the database where the bioclimatic sones and sections dataset is
-```{r connectionObject}
+#
+#
+#
+#
+#
 # the password is stored in a pgpass.conf file
 con <- DBI::dbConnect(drv = RPostgres::Postgres(), host = "t2lippgsql03", dbname = "ano_moduler")
-```
-
-
-Bring in the data
-```{r getData}
+#
+#
+#
+#
+#
 bc <- dplyr::tbl(con, dbplyr::in_schema("helper_variables", "bioclimatic_regions"))
 
 bc <- bc |>
@@ -43,11 +35,11 @@ bc <- bc |>
   mutate(geom = sf::st_as_sfc(geom_wkb, crs = 3035)) |>
   sf::st_as_sf(sf_column_name = "geom")
 
-```
-
-
-Define distribution
-```{r define}
+#
+#
+#
+#
+#
 reg <- unique(bc$BCregion)
 # we exclude boreonemoral and south boreal sones (6SO1-2 and 6SE1)
 exl <- grep("6SO-1-2|6SE-1", reg)
@@ -62,26 +54,26 @@ bc2 <- bc |>
 # test:
 bc2 |> as_tibble() |> count(aapa)
 # OK
-```
-
-A visual test.
-```{r}
+#
+#
+#
+#
 bc2 |>
   slice_sample(prop = 0.2) |>
   tmap::tm_shape() +
   tmap::tm_fill(col = "aapa", style = "cat")
-```
-
-Checking/confirming that the area of the square polygons are 1 km2
-```{r checkResolution}
+#
+#
+#
+#
 temp <- bc2 |>
     mutate(km2 = units::drop_units(st_area(geom))*10^-6)
 
 summary(temp |> as_tibble() |> pull(km2))
 # area is 1 km1
-```
-
-```{r sumfunc}
+#
+#
+#
 # defining a summary function
 dplyr_summary <- function(data, var) {
   if (inherits(data, "sf")) {
@@ -98,11 +90,11 @@ dplyr_summary <- function(data, var) {
     )
 }
 
-```
-
-Import the EEA 10km standard grid
-```{r importGrid}
-grid <- readRDS(here::here("data", "grid50_kyst_bgr.rds"))
+#
+#
+#
+#
+grid <- readRDS("data/grid50_kyst_bgr.rds")
 
 # Test that area is 10 km2
 grid |>
@@ -110,11 +102,11 @@ grid |>
   dplyr_summary(km2)
 
 # the area varies a bit.
-```
-
-Creating a regular raster aligned with `grid`.
-
-```{r rasterizeGrid}
+#
+#
+#
+#
+#
 # set resolution
 rr <- 10000
 # Get bbox
@@ -127,31 +119,55 @@ gr0 <- rast(xmin= floor(bb["xmin"]/rr)*rr, xmax= ceiling(bb["xmax"]/rr)*rr,
 ret <- rasterize(grid, gr0, cover=T, touches=T) # (for very small polygons touches=TRUE is needed, otherwise FALSE)
 
 class(ret)
-```
-
-Rasterize and aggregate the 1km2 polygon map
-```{r rasterize}
+#
+#
+#
+#
 bc_raster_grid <- rasterize(bc2, ret, fun = "max", field = "aapa") 
-res(bc_raster_grid) 
-# OK
-```
-
-```{r}
+res(bc_raster_grid) # OK
+#
+#
+#
 plot(bc_raster_grid)
-```
-
-```{r}
+#
+#
+#
 summary(bc_raster_grid)
-```
+st_crs(bc_raster) # UTM  - OK
 
-```{r}
-ncell(bc_raster_grid)
 ```
+#
+bc_raster10 <- st_warp(
+  bc_raster,
+  cellsize = 10000,
+  method = "max",
+  use_gdal = TRUE
+)
+plot(bc_raster10)
+#
+#
+#
+#
+# the area of each pixle should be should 100 km2
+temp <- bc_raster10 |>
+    st_as_sf() |>
+    mutate(km2 = units::drop_units(st_area(geometry))*10^-6)
 
-There are quite a few NA's, but these are from the areas outside mainland Norway (the ocean, Sweden etc.). So that's OK.
+summary(temp |> as_tibble() |> pull(km2))
+# OK
+#
+#
+#
+#
+saveRDS(bc_raster10, "output/aapa_dist_map.rds")
+write_stars(bc_raster10, "output/aapa_dist_map.tif")
 
-Exporting the map
-```{r export}
-#| eval: false
-writeRaster(bc_raster_grid, "output/aapa_dist_map.tif", overwrite=TRUE)
-```
+# export fines scale raster
+saveRDS(bc_raster, "output/aapa_dist_map_1km2.rds")
+write_stars(bc_raster, "output/aapa_dist_map_1km2.tif")
+
+
+saveRDS(bc2, "output/aapa_dist_map_1km2_vector.rds")
+#
+#
+#
