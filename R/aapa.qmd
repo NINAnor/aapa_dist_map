@@ -172,4 +172,5 @@ Exporting the map
 #| eval: false
 writeRaster(bc_raster_grid, "output/aapa_dist_map_25833.tif", overwrite=TRUE)
 writeRaster(bc_raster_3035, "output/aapa_dist_map_3035.tif", overwrite=TRUE)
+saveRDS(bc2, "output/aapa_dist_map_25833.rds")
 ```
