@@ -173,4 +173,10 @@ Exporting the map
 writeRaster(bc_raster_grid, "output/aapa_dist_map_25833.tif", overwrite=TRUE)
 writeRaster(bc_raster_3035, "output/aapa_dist_map_3035.tif", overwrite=TRUE)
 saveRDS(bc2, "output/aapa_dist_map_25833.rds")
+
+# Version with just the presences
+bc3 <- bc2 |>
+  filter(aapa == 1)
+saveRDS(bc2, "output/aapa_dist_map_presence_only_25833.rds")
+
 ```
